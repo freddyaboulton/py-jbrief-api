@@ -63,6 +63,10 @@ def get_questions(html: BeautifulSoup, game_id: int) -> Tuple[List[QuestionBase]
     return questions, errors
 
 
+def str_to_float(string) -> float:
+    return float(string[string.find("$") + 1:].replace(",", ""))
+
+
 def get_clue_value(clue: Tag) -> Tuple[float, bool]:
     dd_html = clue.findChild("td", {"class": "clue_value_daily_double"})
     if dd_html is not None:
@@ -71,7 +75,7 @@ def get_clue_value(clue: Tag) -> Tuple[float, bool]:
     else:
         value_text = clue.findChild("td", {"class": "clue_value"}).text
         is_dd = False
-    return float(value_text[value_text.find("$") + 1:].replace(",", "")), is_dd
+    return str_to_float(value_text), is_dd
 
 
 def get_max_single_jeopardy_clue_order(clues: List[Tag]) -> int:
@@ -89,13 +93,10 @@ def get_turns(html: BeautifulSoup, game_id: int,
               contestant_name_to_id: Dict[str, int],
               question_text_to_id: Dict[str, id]) -> Tuple[List[TurnBase], List[str]]:
     clues_html: List[Tag] = html.findAll('td', {'class': 'clue'})[:-1]
-    clues_html += [html.find('table', {'class':'final_round'})]
-    turns = []
-    errors = []
+    turns: List[TurnBase] = []
+    errors: List[str] = []
     single_jeopary_end = get_max_single_jeopardy_clue_order(clues_html)
     for i, clue in enumerate(clues_html):
-        if i == 60:
-            breakpoint()
         try:
             clue_text = clue.findChild("td", {'class': "clue_text"})
             value, is_dd = get_clue_value(clue)
@@ -131,6 +132,27 @@ def get_turns(html: BeautifulSoup, game_id: int,
             turns.extend(wrong_turns + correct_turns)
         except Exception as e:
             errors.append(f"Can't parse turn {i} because {str(e)}")
+    final_jeopardy = html.find('table', {'class':'final_round'})
+    try:
+        fj_order = turns[-1].order + 1
+        fj_text = final_jeopardy.find("td", {'class': "clue_text"}).text
+        rows = BeautifulSoup(final_jeopardy.findChild("div")['onmouseover'], 'html5').findAll("td")
+        rows = [rows[i:i+3] for i in range(0, len(rows), 3)]
+        for contestant_html, _, wager_html in rows:
+            contestant_id = contestant_name_to_id[contestant_html.text]
+            value = str_to_float(wager_html.text)
+            if contestant_html['class'] == ['wrong']:
+                value *= -1
+            turns.append(TurnBase(game_id=game_id,
+                                contestant_id=contestant_id,
+                                question_id=question_text_to_id[fj_text],
+                                order=fj_order,
+                                change_in_score=value,
+                                is_daily_double=False,
+                                is_final_jeopardy=True))
+    except Exception as e:
+        errors.append(f"Can't parse FJ because {str(e)}")        
+
     return turns, errors
 
     
