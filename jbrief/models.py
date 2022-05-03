@@ -24,8 +24,8 @@ class QuestionBase(BaseModel):
 class TurnBase(BaseModel):
     game_id: int
     contestant_id: int
-    question_id: int
-    clue_order_number: int
+    question_id: UUID
+    order: int
     change_in_score: float
     is_daily_double: bool
     is_final_jeopardy: bool
