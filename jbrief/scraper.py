@@ -1,6 +1,6 @@
 from urllib.request import urlopen
 from bs4 import BeautifulSoup, Tag
-from .models import ContestantBase, QuestionBase
+from jbrief.models import ContestantBase, QuestionBase
 import re
 import uuid
 
@@ -17,7 +17,11 @@ def get_contestants(html: BeautifulSoup, game_id: int) -> Tuple[List[ContestantB
         id_match = re.match(id_template, contestant_html.find("a")['href'])
         info_match = re.match(info_template, contestant_html.text)
         try:
-            contestants.append(ContestantBase(id_match.group("id"), *info_match.groups()))
+            contestants.append(ContestantBase(id=id_match.group("id"), first_name=info_match.group("first_name"),
+                                               last_name=info_match.group("last_name"),
+                                               occupation=info_match.group("occupation"),
+                                               city=info_match.group("city"),
+                                               state=info_match.group("state")))
         except AttributeError:
             errors.append(f"Cannot parse info for contestant {i} of game {game_id}")
     return contestants, errors
@@ -53,15 +57,19 @@ def get_questions(html: BeautifulSoup, game_id: int) -> Tuple[List[QuestionBase]
     try:
         fj_html = html.find('table',{'class':'final_round'})
         fj_text_html = fj_html.findChild("td", {"class": "clue_text"})
-        fj_category = category_from_clue_id(fj_html['id'], categories)
+        fj_category = category_from_clue_id(fj_text_html['id'], categories)
         fj_text = fj_text_html.text
         fj_id = uuid.uuid4()
         answer = BeautifulSoup(fj_html.findChild("div")['onmouseover'], 'html5').findChild("em", {"class": "correct_response"}).text
         questions.append(QuestionBase(id=fj_id, game_id=game_id, text=fj_text, answer=answer, category=fj_category))
     except Exception as e:
-        errors.append(f"Cannot parse clue {i} of game {game_id} because of {str(e)}")
+        errors.append(f"Cannot parse fj {i} of game {game_id} because of {str(e)}")
+    
+    return questions, errors
 
 
 if __name__ == "__main__":
     html = BeautifulSoup(urlopen("https://j-archive.com/showgame.php?game_id=7343"), "html5")
-    print(get_contestants(html, "7343"))
+    print(get_contestants(html, 7343))
+    print(get_questions(html, "7343"))
+

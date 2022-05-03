@@ -8,6 +8,7 @@ class ContestantBase(BaseModel):
     id: int
     first_name: str
     last_name: str
+    occupation: str
     city: str
     state: str
 
