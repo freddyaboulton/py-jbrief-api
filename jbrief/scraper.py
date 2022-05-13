@@ -4,12 +4,13 @@ from jbrief.models import Contestant, Question, Turn
 import re
 from tortoise import run_async, Tortoise
 import hashlib
+import argparse
 
 from typing import List, Tuple, Dict
 
 
 def get_contestants(html: BeautifulSoup, game_id: int) -> Tuple[List[Contestant], List[str]]:
-    info_template = "(?P<first_name>[A-Za-z]*) (?P<last_name>[A-za-z]*), a[n]? (?P<occupation>.[A-Za-z ]*) from (?P<city>.[a-zA-Z]*), (?P<state>.[a-zA-Z]*)[*]?"
+    info_template = "(?P<first_name>[A-Za-z]*) (?P<last_name>[A-za-z]*), a[n]? (?P<occupation>.[A-Za-z ]*) from (?P<city>.[a-zA-Z ]*), (?P<state>.[a-zA-Z ]*)[*]?"
     id_template = ".*=(?P<id>[0-9]*)"
     contestants_html = html.findAll('p', {'class': 'contestants'})
     contestants = []
@@ -163,21 +164,32 @@ def get_turns(html: BeautifulSoup, game_id: int,
     return turns, errors
 
 
-async def script():
+async def script(game_id: int):
     await Tortoise.init(db_url="sqlite://jbrief.sqlite3", modules={"models": ["jbrief.models"]})
-    html = BeautifulSoup(urlopen("https://j-archive.com/showgame.php?game_id=7343"), "html5")
-    contestants, e = get_contestants(html, 7343)
-    await Contestant.bulk_create(contestants, on_conflict=["id"], update_fields=["first_name", "last_name", "occupation", "city", "state"])
-    questions, e_q = get_questions(html, 7343)
-    await Question.bulk_create(questions)
+    html = BeautifulSoup(urlopen(f"https://j-archive.com/showgame.php?game_id={game_id}"), "html5")
+    contestants, e = get_contestants(html, game_id)
+    for contestant in contestants:
+        if not await Contestant.get_or_none(id=contestant.id):
+            await contestant.save()
+
+    # await Contestant.bulk_create(contestants)
+    questions, e_q = get_questions(html, game_id)
+    for question in questions:
+        if not await Question.get_or_none(id=question.id):
+            await question.save()
 
     name_to_id = {c.first_name: c.id for c in contestants}
     text_to_id = {q.text: q.id for q in questions}
-    turns, e_t = get_turns(html, 7343, name_to_id, text_to_id)
-    await Turn.bulk_create(turns)
+    turns, e_t = get_turns(html, game_id, name_to_id, text_to_id)
+    for turn in turns:
+        if not await Turn.get_or_none(id=turn.id):
+            await turn.save()
 
 
 if __name__ == "__main__":
-    run_async(script())
+    parser = argparse.ArgumentParser(description="Scrape a game of jeopardy")
+    parser.add_argument('--game-id', dest='game_id')
+    args = parser.parse_args()
+    run_async(script(args.game_id))
 
 
